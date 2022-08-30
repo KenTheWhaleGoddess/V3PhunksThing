@@ -114,12 +114,13 @@ contract OpenEdition is Ownable, ERC1155('') {
         require(ethRaisedPerEdition[idx] > ethWithdrawn[idx], "balance is 0");
         uint256 withdrawable = ethRaisedPerEdition[idx] - ethWithdrawn[idx];
         uint256 charitable = withdrawable * 3 / 10;
-        payable(drops[idx].charity).call{value: charitable}('');
-        payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
 
         ethWithdrawn[idx] += withdrawable;
         ethGivenToCharity[idx] += charitable;
         charityToEthReceived[drops[idx].charity] += charitable;
+
+        payable(drops[idx].charity).call{value: charitable}('');
+        payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
     }
 
     function setArt(uint256 idx,string memory newArt) external onlyOwnerOfDrop(idx) {
