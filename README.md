@@ -1,6 +1,4 @@
-# V3PhunksThing - 
-
-# V3 Phunks Ethos 
+# A very Phunky ethos
 - On chain verifiable charity
 
 # CharityProvider.sol
@@ -11,6 +9,7 @@ Todo: I imagine charities come with important metadata/info. I would write this 
 
 # OpenEdition.sol
 Mutant Serums from the Ugly Apes are ERC1155 tokens, meaning there are several tokens for each image. We can empower people to drop their own open editions and give to trusted charities from the Charity Provider.
+![image](https://user-images.githubusercontent.com/10412348/187516143-df205b97-049b-4aa6-9bf5-2818ed325d83.png)
 
 Requirements for minting an open edition:
 - Generate/pin ipfs or base64 metadata string if on-chain 
