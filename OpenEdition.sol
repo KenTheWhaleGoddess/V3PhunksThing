@@ -3,7 +3,7 @@
 pragma solidity 0.8.12;
 
 
-import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -14,7 +14,7 @@ import "./ICharityProvider.sol";
 struct DropDatas {
     uint16 maxPerWallet;
     uint16 maxSupply;
-    uint16 mintPrice;
+    uint256 mintPrice;
     uint16 charityPercent;
 
     address ownerOf;
@@ -23,7 +23,7 @@ struct DropDatas {
     address charity;
 }
 
-contract OpenEdition is Ownable, ERC1155('') {
+contract OpenEdition is Ownable, ERC1155Supply {
     uint256 counter;
 
     bool v3RequirementEnabled = true;
@@ -31,7 +31,6 @@ contract OpenEdition is Ownable, ERC1155('') {
     address charityProvider = 0xDF6e46d6a0999a5c0D19C094A11b9d4A03D9C3F9;
 
     mapping(address => mapping(uint256 => uint256)) mintedByWalletPerEdition;
-    mapping(uint256 => uint256) currentSupplyPerEdition;
 
     mapping(uint256 => uint256) ethRaisedPerEdition;
 
@@ -41,25 +40,26 @@ contract OpenEdition is Ownable, ERC1155('') {
 
     mapping(uint256 => DropDatas) drops;
 
+    constructor() ERC1155("") {}
+
 
     function mint(uint256 tokenId, uint256 amount) external payable {
         require(tokenId < counter, "aaa");
         require(amount + mintedByWalletPerEdition[msg.sender][tokenId] < drops[tokenId].maxPerWallet, "max per wallet per edition");
-        require(currentSupplyPerEdition[tokenId] + amount < drops[tokenId].maxSupply, "too many");
+        require(super.totalSupply(tokenId) + amount < drops[tokenId].maxSupply, "too many");
         require(msg.value >= amount * drops[tokenId].mintPrice, "not sending enough ETH");
         mintedByWalletPerEdition[msg.sender][tokenId] += amount;
-        currentSupplyPerEdition[tokenId] += amount;
         ethRaisedPerEdition[tokenId] += msg.value;
         _mint(msg.sender, tokenId, amount, '');
     }
 
-    function createNewDrop(string memory name, string memory art, uint16 mintPrice,
+    function createNewDrop(string memory name, string memory art, uint256 mintPrice,
         uint16 maxPerWallet, uint16 maxSupply, address charity, uint16 charityPercent) external payable {
         require(!v3RequirementEnabled || IERC721(v3phunks).balanceOf(msg.sender) > 0, "need 1 v3 phunk");
         require(ICharityProvider(charityProvider).isCharity(charity), "not considered a charity");
         require(msg.value >= .1 ether, "not senidng enough");
         require(charityProvider != address(0), "charity provider is not set");
-        require(charityPercent <= 100, "charity percent is in basis points of 100");
+        require(charityPercent >= 30 && charityPercent <= 100, "charity percent is in basis points of 100");
 
         payable(charity).call{value: msg.value}('');
         drops[counter] = DropDatas(
@@ -76,19 +76,15 @@ contract OpenEdition is Ownable, ERC1155('') {
         counter += 1;
     }
 
-    function getDropDetails(uint16 idx) external returns (uint16 maxPerWallet, uint16 maxSupply, uint16 mintPrice,
-                                                          uint16 charityPercent,address ownerOf,address artRef, address nameRef,address charity) {
+    function getDropDetails(uint16 idx) external returns (DropDatas memory datas) {
         require(idx < counter, "not a valid drop");
-        DropDatas memory drop = drops[idx];
-        return (drop.maxPerWallet, drop.maxSupply, drop.mintPrice, drop.charityPercent, drop.ownerOf, drop.artRef, drop.nameRef, drop.charity);
+        datas = drops[idx];
     }
 
-    function ethRaisedForAllCharities() external view returns (uint256) {
-        uint eth;
+    function ethRaisedForAllCharities() external view returns (uint256 eth) {
         for(uint i; i < counter; i++) {
             eth += ethGivenToCharity[i];
         }
-        return eth;
     }
 
     function uri(uint256 idx) public view override returns (string memory) {
@@ -110,10 +106,10 @@ contract OpenEdition is Ownable, ERC1155('') {
         _;
     }
 
-    function withdrawAllFromDrop(uint256 idx) external onlyOwnerOfDrop(idx) {
+    function withdrawAllFromDrop(uint256 idx) external {
         require(ethRaisedPerEdition[idx] > ethWithdrawn[idx], "balance is 0");
         uint256 withdrawable = ethRaisedPerEdition[idx] - ethWithdrawn[idx];
-        uint256 charitable = withdrawable * 3 / 10;
+        uint256 charitable = withdrawable * drops[idx].charityPercent / 100;
 
         ethWithdrawn[idx] += withdrawable;
         ethGivenToCharity[idx] += charitable;
@@ -129,7 +125,7 @@ contract OpenEdition is Ownable, ERC1155('') {
     function setName(uint256 idx, string memory newArt) external onlyOwnerOfDrop(idx) {
         drops[idx].nameRef = SSTORE2.write(bytes(newArt));
     }
-    function setMintPrice(uint256 idx, uint16 newMintPrice) external onlyOwnerOfDrop(idx) {
+    function setMintPrice(uint256 idx, uint256 newMintPrice) external onlyOwnerOfDrop(idx) {
         drops[idx].mintPrice = newMintPrice;
     }
 
@@ -145,11 +141,11 @@ contract OpenEdition is Ownable, ERC1155('') {
         drops[idx].ownerOf = newOwnerOf;
     }
     function setMaxSupply(uint256 idx, uint16 newMaxSupply) external onlyOwnerOfDrop(idx) {
-        require(currentSupplyPerEdition[idx] < newMaxSupply, "rugged");
+        require(super.totalSupply(idx) <= newMaxSupply, "rugged");
         drops[idx].maxSupply = newMaxSupply;
     }
     function setCharityPercent(uint256 idx, uint16 newCharityPercent) external onlyOwnerOfDrop(idx) {
-        require(newCharityPercent >= 30 && newCharityPercent < 100, "percent is in basis points of 100");
+        require(newCharityPercent >= 30 && newCharityPercent <= 100, "percent is in basis points of 100");
         drops[idx].charityPercent = newCharityPercent;
     }
 
