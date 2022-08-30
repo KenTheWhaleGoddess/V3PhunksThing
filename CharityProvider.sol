@@ -11,7 +11,6 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
  */
 contract CharityProvider is Ownable {
     using EnumerableSet for EnumerableSet.AddressSet;
-    mapping(address => bool) isCharityAddress;
     EnumerableSet.AddressSet charities;
 
     function getCharities() external view returns (address[] memory) {
@@ -19,19 +18,17 @@ contract CharityProvider is Ownable {
     }
 
     function isCharity(address _address) external view returns (bool) {
-        return isCharityAddress[_address];
+        return charities.contains(_address);
     }
 
     function addCharities(address[] calldata charitiesList) external onlyOwner {
         for(uint i; i < charitiesList.length; i++) {
-            isCharityAddress[charitiesList[i]] = true;
             charities.add(charitiesList[i]);
         }
     }
 
     function removeCharities(address[] calldata notCharities) external onlyOwner {
         for(uint i; i < notCharities.length; i++) {
-            isCharityAddress[notCharities[i]] = false;
             charities.remove(notCharities[i]);
         }
     }
