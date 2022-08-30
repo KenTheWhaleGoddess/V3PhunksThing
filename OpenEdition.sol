@@ -12,9 +12,11 @@ import "./Base64.sol";
 import "./ICharityProvider.sol";
 
 struct DropDatas {
-    uint256 maxPerWallet;
-    uint256 maxSupply;
-    uint256 mintPrice;
+    uint16 maxPerWallet;
+    uint16 maxSupply;
+    uint16 mintPrice;
+    uint16 charityPercent;
+
     address ownerOf;
     address artRef;
     address nameRef;
@@ -24,6 +26,7 @@ struct DropDatas {
 contract OpenEdition is Ownable, ERC1155('') {
     uint256 counter;
 
+    bool v3RequirementEnabled = true;
     address v3phunks = 0xb7D405BEE01C70A9577316C1B9C2505F146e8842;
     address charityProvider = 0xDF6e46d6a0999a5c0D19C094A11b9d4A03D9C3F9;
 
@@ -50,17 +53,20 @@ contract OpenEdition is Ownable, ERC1155('') {
         _mint(msg.sender, tokenId, amount, '');
     }
 
-    function createNewDrop(string memory name, string memory art, uint256 mintPrice,
-        uint256 maxPerWallet, uint256 maxSupply, address charity) external payable {
-        require(IERC721(v3phunks).balanceOf(msg.sender) > 0, "need 1 v3 phunk");
+    function createNewDrop(string memory name, string memory art, uint16 mintPrice,
+        uint16 maxPerWallet, uint16 maxSupply, address charity, uint16 charityPercent) external payable {
+        require(!v3RequirementEnabled || IERC721(v3phunks).balanceOf(msg.sender) > 0, "need 1 v3 phunk");
         require(ICharityProvider(charityProvider).isCharity(charity), "not considered a charity");
         require(msg.value >= .1 ether, "not senidng enough");
-        payable(charity).call{value: msg.value}('');
         require(charityProvider != address(0), "charity provider is not set");
+        require(newCharityPercent >= 30 && charityPercent <= 100, "charity percent is in basis points of 100");
+
+        payable(charity).call{value: msg.value}('');
         drops[counter] = DropDatas(
             maxPerWallet,
             maxSupply,
             mintPrice,
+            charityPercent,
             msg.sender,
             SSTORE2.write(bytes(art)),
             SSTORE2.write(bytes(name)),
@@ -90,9 +96,10 @@ contract OpenEdition is Ownable, ERC1155('') {
                         '"}')))));
     }
 
-    //drop owner functions
+    //drop owner functions ("super owner" can execute any of this)
 
     modifier onlyOwnerOfDrop(uint256 idx) {
+        require(idx < counter, "not even a drop smh");
         require(drops[idx].ownerOf == msg.sender || owner() == msg.sender, "not the drop owner");
         _;
     }
@@ -100,7 +107,7 @@ contract OpenEdition is Ownable, ERC1155('') {
     function withdrawAllFromDrop(uint256 idx) external onlyOwnerOfDrop(idx) {
         require(ethRaisedPerEdition[idx] > ethWithdrawn[idx], "balance is 0");
         uint256 withdrawable = ethRaisedPerEdition[idx] - ethWithdrawn[idx];
-        uint256 charitable = withdrawable * 3 / 10;
+        uint256 charitable = withdrawable * drops[idx].charityPercent / 100;
         payable(drops[idx].charity).call{value: charitable}('');
         payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
 
@@ -115,11 +122,11 @@ contract OpenEdition is Ownable, ERC1155('') {
     function setName(uint256 idx, string memory newArt) external onlyOwnerOfDrop(idx) {
         drops[idx].nameRef = SSTORE2.write(bytes(newArt));
     }
-    function setMintPrice(uint256 idx, uint256 newMintPrice) external onlyOwnerOfDrop(idx) {
+    function setMintPrice(uint256 idx, uint16 newMintPrice) external onlyOwnerOfDrop(idx) {
         drops[idx].mintPrice = newMintPrice;
     }
 
-    function setMaxPerWallet(uint256 idx, uint256 newMaxPerWallet) external onlyOwnerOfDrop(idx) {
+    function setMaxPerWallet(uint256 idx, uint16 newMaxPerWallet) external onlyOwnerOfDrop(idx) {
         drops[idx].maxPerWallet = newMaxPerWallet;
     }
 
@@ -130,13 +137,20 @@ contract OpenEdition is Ownable, ERC1155('') {
     function setOwnerOf(uint256 idx, address newOwnerOf) external onlyOwnerOfDrop(idx) {
         drops[idx].ownerOf = newOwnerOf;
     }
-    function setMaxSupply(uint256 idx, uint256 newMaxSupply) external onlyOwnerOfDrop(idx) {
+    function setMaxSupply(uint256 idx, uint16 newMaxSupply) external onlyOwnerOfDrop(idx) {
         require(currentSupplyPerEdition[idx] < newMaxSupply, "rugged");
         drops[idx].maxSupply = newMaxSupply;
+    }
+    function setCharityPercent(uint256 idx, uint16 newCharityPercent) external onlyOwnerOfDrop(idx) {
+        require(newCharityPercent >= 30 && newCharityPercent < 100, "percent is in basis points of 100");
+        drops[idx].charityPercent = newCharityPercent;
     }
 
     //owner owner functions
 
+    function setV3Requirement(bool _isEnabled) external onlyOwner {
+        v3RequirementEnabled = _isEnabled;
+    }
     function setCharityProvider(address _newCharityProvider) external onlyOwner {
         require(ICharityProvider(_newCharityProvider).isCharity(address(0)));//sanity check
         charityProvider = _newCharityProvider;
