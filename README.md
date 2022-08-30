@@ -9,7 +9,7 @@ Todo: I imagine charities come with important metadata/info. I would write this 
 
 # OpenEdition.sol
 Mutant Serums from the Ugly Apes are ERC1155 tokens, meaning there are several tokens for each image. We can empower people to drop their own open editions and give to trusted charities from the Charity Provider.
-![image](https://user-images.githubusercontent.com/10412348/187516143-df205b97-049b-4aa6-9bf5-2818ed325d83.png)
+Mutant Serums: https://opensea.io/assets/ethereum/0x22c36bfdcef207f9c0cc941936eff94d4246d14a/1
 
 Requirements for minting an open edition:
 - Generate/pin ipfs or base64 metadata string if on-chain 
