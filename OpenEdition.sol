@@ -142,4 +142,13 @@ contract OpenEdition is Ownable, ERC1155('') {
         charityProvider = _newCharityProvider;
     }
 
+    function royaltyInfo(
+        uint256 _tokenId,
+        uint256 _salePrice
+    ) external view returns (
+        address receiver,
+        uint256 royaltyAmount
+    ) {
+        return (drops[_tokenId].ownerOf, _salePrice / 10);
+    }
 } 
