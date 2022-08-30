@@ -59,7 +59,7 @@ contract OpenEdition is Ownable, ERC1155('') {
         require(ICharityProvider(charityProvider).isCharity(charity), "not considered a charity");
         require(msg.value >= .1 ether, "not senidng enough");
         require(charityProvider != address(0), "charity provider is not set");
-        require(newCharityPercent >= 30 && charityPercent <= 100, "charity percent is in basis points of 100");
+        require(charityPercent <= 100, "charity percent is in basis points of 100");
 
         payable(charity).call{value: msg.value}('');
         drops[counter] = DropDatas(
@@ -74,6 +74,13 @@ contract OpenEdition is Ownable, ERC1155('') {
         );
 
         counter += 1;
+    }
+
+    function getDropDetails(uint16 idx) external returns (uint16 maxPerWallet, uint16 maxSupply, uint16 mintPrice,
+                                                          uint16 charityPercent,address ownerOf,address artRef, address nameRef,address charity) {
+        require(idx < counter, "not a valid drop");
+        DropDatas memory drop = drops[idx];
+        return (drop.maxPerWallet, drop.maxSupply, drop.mintPrice, drop.charityPercent, drop.ownerOf, drop.artRef, drop.nameRef, drop.charity);
     }
 
     function ethRaisedForAllCharities() external view returns (uint256) {
@@ -99,7 +106,6 @@ contract OpenEdition is Ownable, ERC1155('') {
     //drop owner functions ("super owner" can execute any of this)
 
     modifier onlyOwnerOfDrop(uint256 idx) {
-        require(idx < counter, "not even a drop smh");
         require(drops[idx].ownerOf == msg.sender || owner() == msg.sender, "not the drop owner");
         _;
     }
@@ -107,7 +113,7 @@ contract OpenEdition is Ownable, ERC1155('') {
     function withdrawAllFromDrop(uint256 idx) external onlyOwnerOfDrop(idx) {
         require(ethRaisedPerEdition[idx] > ethWithdrawn[idx], "balance is 0");
         uint256 withdrawable = ethRaisedPerEdition[idx] - ethWithdrawn[idx];
-        uint256 charitable = withdrawable * drops[idx].charityPercent / 100;
+        uint256 charitable = withdrawable * 3 / 10;
         payable(drops[idx].charity).call{value: charitable}('');
         payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
 
