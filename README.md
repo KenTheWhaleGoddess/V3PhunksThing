@@ -30,7 +30,7 @@ What can you do after you mint as the owner?
 - change percentage for future withdrawals
 - change mint parameters
 
-This functionality is gated by onlyOwnerOf keyword: https://github.com/KenTheWhaleGoddess/V3PhunksThing/blob/main/OpenEdition.sol#L101-L105
+This functionality is gated by `onlyOwnerOfDrop` keyword: https://github.com/KenTheWhaleGoddess/V3PhunksThing/blob/main/OpenEdition.sol#L101-L105
 
 # SSTORE2 
 efficient storage of art/ipfs string and name
