@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: GPL-3.0
-
+ // SPDX-License-Identifier: MIT
 pragma solidity 0.8.12;
 
 
 import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import "./SSTORE2.sol";
 import "./Base64.sol";
@@ -14,8 +14,9 @@ import "./ICharityProvider.sol";
 struct DropDatas {
     uint16 maxPerWallet;
     uint16 maxSupply;
-    uint256 mintPrice;
     uint16 charityPercent;
+    uint16 royaltyPercent;
+    uint256 mintPrice;
 
     address ownerOf;
     address artRef;
@@ -23,7 +24,7 @@ struct DropDatas {
     address charity;
 }
 
-contract OpenEdition is Ownable, ERC1155Supply {
+contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
     uint256 counter;
 
     bool v3RequirementEnabled = true;
@@ -43,7 +44,7 @@ contract OpenEdition is Ownable, ERC1155Supply {
     constructor() ERC1155("") {}
 
 
-    function mint(uint256 tokenId, uint256 amount) external payable {
+    function mint(uint256 tokenId, uint256 amount) external payable nonReentrant {
         require(tokenId < counter, "aaa");
         require(amount + mintedByWalletPerEdition[msg.sender][tokenId] < drops[tokenId].maxPerWallet, "max per wallet per edition");
         require(super.totalSupply(tokenId) + amount < drops[tokenId].maxSupply, "too many");
@@ -54,19 +55,23 @@ contract OpenEdition is Ownable, ERC1155Supply {
     }
 
     function createNewDrop(string memory name, string memory art, uint256 mintPrice,
-        uint16 maxPerWallet, uint16 maxSupply, address charity, uint16 charityPercent) external payable {
+        uint16 maxPerWallet, uint16 maxSupply, address charity, uint16 charityPercent, uint16 royaltyPercent) external payable nonReentrant {
         require(!v3RequirementEnabled || IERC721(v3phunks).balanceOf(msg.sender) > 0, "need 1 v3 phunk");
         require(ICharityProvider(charityProvider).isCharity(charity), "not considered a charity");
         require(msg.value >= .1 ether, "not senidng enough");
         require(charityProvider != address(0), "charity provider is not set");
         require(charityPercent >= 30 && charityPercent <= 100, "charity percent is in basis points of 100");
+        require(royaltyPercent <= 10, "Artist royalties percent is in basis points of 100 and must be <= 10%");
 
-        payable(charity).call{value: msg.value}('');
+
+        (bool success, ) = payable(charity).call{value: msg.value}('');
+        require(success, "unable to send value");        
         drops[counter] = DropDatas(
             maxPerWallet,
             maxSupply,
-            mintPrice,
+            royaltyPercent,
             charityPercent,
+            mintPrice,
             msg.sender,
             SSTORE2.write(bytes(art)),
             SSTORE2.write(bytes(name)),
@@ -99,15 +104,13 @@ contract OpenEdition is Ownable, ERC1155Supply {
                         '"}')))));
     }
 
-    //drop owner functions ("super owner" can execute any of this)
 
-    modifier onlyOwnerOfDrop(uint256 idx) {
-        require(drops[idx].ownerOf == msg.sender || owner() == msg.sender, "not the drop owner");
-        _;
-    }
+    //anyone can call this function to withdraw funds.
+
 
     function withdrawAllFromDrop(uint256 idx) external {
         require(ethRaisedPerEdition[idx] > ethWithdrawn[idx], "balance is 0");
+        require(ICharityProvider(charityProvider).isCharity(drops[idx].charity));
         uint256 withdrawable = ethRaisedPerEdition[idx] - ethWithdrawn[idx];
         uint256 charitable = withdrawable * drops[idx].charityPercent / 100;
 
@@ -115,9 +118,19 @@ contract OpenEdition is Ownable, ERC1155Supply {
         ethGivenToCharity[idx] += charitable;
         charityToEthReceived[drops[idx].charity] += charitable;
 
-        payable(drops[idx].charity).call{value: charitable}('');
-        payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
+        (bool succ, ) = payable(drops[idx].charity).call{value: charitable}('');
+        (bool succ2, ) =payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
+        require(succ && succ2, "something didnt work hmmmm");
     }
+
+    //drop owner functions ("super owner" can execute any of this)
+
+
+    modifier onlyOwnerOfDrop(uint256 idx) {
+        require(drops[idx].ownerOf == msg.sender || owner() == msg.sender, "not the drop owner");
+        _;
+    }
+
 
     function setArt(uint256 idx,string memory newArt) external onlyOwnerOfDrop(idx) {
         drops[idx].artRef = SSTORE2.write(bytes(newArt));
@@ -148,6 +161,10 @@ contract OpenEdition is Ownable, ERC1155Supply {
         require(newCharityPercent >= 30 && newCharityPercent <= 100, "percent is in basis points of 100");
         drops[idx].charityPercent = newCharityPercent;
     }
+    function setRoyaltyPercent(uint256 idx, uint16 newRoyaltyPercent) external onlyOwnerOfDrop(idx) {
+        require(newRoyaltyPercent <= 10, "Artist royalties percent is in basis points of 100 and must be <= 10%");
+        drops[idx].royaltyPercent = newRoyaltyPercent;
+    }
 
     //owner owner functions
 
@@ -166,6 +183,6 @@ contract OpenEdition is Ownable, ERC1155Supply {
         address receiver,
         uint256 royaltyAmount
     ) {
-        return (drops[_tokenId].ownerOf, _salePrice / 10);
+        return (drops[_tokenId].ownerOf, _salePrice * drops[_tokenId].royaltyPercent / 100);
     }
 } 
