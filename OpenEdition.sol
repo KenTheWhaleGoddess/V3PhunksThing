@@ -171,6 +171,9 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
     function setV3Requirement(bool _isEnabled) external onlyOwner {
         v3RequirementEnabled = _isEnabled;
     }
+    function setV3ContractAddress(address _v3Address) external onlyOwner {
+        v3phunks = _v3Address;
+    }
     function setCharityProvider(address _newCharityProvider) external onlyOwner {
         require(ICharityProvider(_newCharityProvider).isCharity(address(0)));//sanity check
         charityProvider = _newCharityProvider;
