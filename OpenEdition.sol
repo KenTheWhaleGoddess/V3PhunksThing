@@ -22,6 +22,7 @@ struct DropDatas {
     address artRef;
     address nameRef;
     address charity;
+    bool isEns;
 }
 
 contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
@@ -60,7 +61,7 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
         require(ICharityProvider(charityProvider).isCharity(charity), "not considered a charity");
         require(msg.value >= .1 ether, "not senidng enough");
         require(charityProvider != address(0), "charity provider is not set");
-        require(charityPercent >= 30 && charityPercent <= 100, "charity percent is in basis points of 100");
+        require(charityPercent > 29 && charityPercent < 101, "charity percent is in basis points of 100. we require 30-100% given to charity");
         require(royaltyPercent <= 10, "Artist royalties percent is in basis points of 100 and must be <= 10%");
 
 
@@ -75,12 +76,40 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
             msg.sender,
             SSTORE2.write(bytes(art)),
             SSTORE2.write(bytes(name)),
-            charity
+            charity,
+            false
         );
 
         counter += 1;
     }
 
+    function createNewDropEnsCharity(string memory name, string memory art, uint256 mintPrice,
+        uint16 maxPerWallet, uint16 maxSupply, string calldata charity, uint16 charityPercent, uint16 royaltyPercent) external payable nonReentrant {
+        require(!v3RequirementEnabled || IERC721(v3phunks).balanceOf(msg.sender) > 0, "need 1 v3 phunk");
+        require(ICharityProvider(charityProvider).isEnsCharity(charity), "not considered a charity");
+        require(msg.value >= .1 ether, "not senidng enough");
+        require(charityProvider != address(0), "charity provider is not set");
+        require(charityPercent > 29 && charityPercent < 101, "charity percent is in basis points of 100. we require 30-100% given to charity");
+        require(royaltyPercent <= 10, "Artist royalties percent is in basis points of 100 and must be <= 10%");
+
+
+        (bool success, ) = payable(ICharityProvider(charityProvider).resolveCharityEns(charity)).call{value: msg.value}('');
+        require(success, "unable to send value");        
+        drops[counter] = DropDatas(
+            maxPerWallet,
+            maxSupply,
+            royaltyPercent,
+            charityPercent,
+            mintPrice,
+            msg.sender,
+            SSTORE2.write(bytes(art)),
+            SSTORE2.write(bytes(name)),
+            SSTORE2.write(bytes(charity)),
+            true
+        );
+
+        counter += 1;
+    }
     function getDropDetails(uint16 idx) external returns (DropDatas memory datas) {
         require(idx < counter, "not a valid drop");
         datas = drops[idx];
@@ -108,8 +137,25 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
     //anyone can call this function to withdraw funds.
 
 
-    function withdrawAllFromDrop(uint256 idx) external {
+    function withdrawAllFromDropEnsForCharity(uint256 idx) external {
         require(ethRaisedPerEdition[idx] > ethWithdrawn[idx], "balance is 0");
+        require(drops[idx].isEns, "this is an ENS donation");
+        require(ICharityProvider(charityProvider).isCharity(drops[idx].charity));
+        uint256 withdrawable = ethRaisedPerEdition[idx] - ethWithdrawn[idx];
+        uint256 charitable = withdrawable * drops[idx].charityPercent / 100;
+
+        ethWithdrawn[idx] += withdrawable;
+        ethGivenToCharity[idx] += charitable;
+        charityToEthReceived[drops[idx].charity] += charitable;
+        string memory ens = string(SSTORE2.read((drops[idx].charity)));
+        (bool succ, ) = payable(ICharityProvider(charityProvider).resolveCharityEns(ens)).call{value: charitable}('');
+        (bool succ2, ) =payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
+        require(succ && succ2, "something didnt work hmmmm");
+    }
+
+    function withdrawAllFromDropNoEns(uint256 idx) external {
+        require(ethRaisedPerEdition[idx] > ethWithdrawn[idx], "balance is 0");
+        require(!drops[idx].isEns, "this is not an ENS donation");
         require(ICharityProvider(charityProvider).isCharity(drops[idx].charity));
         uint256 withdrawable = ethRaisedPerEdition[idx] - ethWithdrawn[idx];
         uint256 charitable = withdrawable * drops[idx].charityPercent / 100;
@@ -146,9 +192,13 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
         drops[idx].maxPerWallet = newMaxPerWallet;
     }
 
-    function setCharity(uint256 idx, address newCharity) external onlyOwnerOfDrop(idx) {
+    function setCharityNoEns(uint256 idx, address newCharity) external onlyOwnerOfDrop(idx) {
         require(ICharityProvider(charityProvider).isCharity(newCharity));
         drops[idx].charity = newCharity;
+    }
+    function setCharityEns(uint256 idx, string calldata newCharity) external onlyOwnerOfDrop(idx) {
+        require(ICharityProvider(charityProvider).isEnsCharity(newCharity));
+        drops[idx].charity = SSTORE2.write(bytes(newCharity));
     }
     function setOwnerOf(uint256 idx, address newOwnerOf) external onlyOwnerOfDrop(idx) {
         drops[idx].ownerOf = newOwnerOf;
@@ -158,11 +208,11 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
         drops[idx].maxSupply = newMaxSupply;
     }
     function setCharityPercent(uint256 idx, uint16 newCharityPercent) external onlyOwnerOfDrop(idx) {
-        require(newCharityPercent >= 30 && newCharityPercent <= 100, "percent is in basis points of 100");
+        require(newCharityPercent > 29 && newCharityPercent <= 101, "percent is in basis points of 100");
         drops[idx].charityPercent = newCharityPercent;
     }
     function setRoyaltyPercent(uint256 idx, uint16 newRoyaltyPercent) external onlyOwnerOfDrop(idx) {
-        require(newRoyaltyPercent <= 10, "Artist royalties percent is in basis points of 100 and must be <= 10%");
+        require(newRoyaltyPercent <= 10, "Artist royalties percent is in basis points of 100 and must be > 30%");
         drops[idx].royaltyPercent = newRoyaltyPercent;
     }
 
