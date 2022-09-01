@@ -67,6 +67,7 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
 
         (bool success, ) = payable(charity).call{value: msg.value}('');
         require(success, "unable to send value");        
+
         drops[counter] = DropDatas(
             maxPerWallet,
             maxSupply,
@@ -79,6 +80,7 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
             charity,
             false
         );
+        emit CharitySent(drops[counter].ownerOf, charity, msg.value);
 
         counter += 1;
     }
@@ -107,6 +109,7 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
             SSTORE2.write(bytes(charity)),
             true
         );
+        emit CharitySentToEns(drops[counter].ownerOf, charity, msg.value);
 
         counter += 1;
     }
@@ -151,6 +154,7 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
         (bool succ, ) = payable(ICharityProvider(charityProvider).resolveCharityEns(ens)).call{value: charitable}('');
         (bool succ2, ) =payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
         require(succ && succ2, "something didnt work hmmmm");
+        emit CharitySentToEns(drops[idx].ownerOf, ens, charitable);
     }
 
     function withdrawAllFromDropNoEns(uint256 idx) external {
@@ -167,6 +171,8 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
         (bool succ, ) = payable(drops[idx].charity).call{value: charitable}('');
         (bool succ2, ) =payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
         require(succ && succ2, "something didnt work hmmmm");
+        emit CharitySent(drops[idx].ownerOf, drops[idx].charity, charitable);
+
     }
 
     //drop owner functions ("super owner" can execute any of this)
@@ -238,4 +244,7 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
     ) {
         return (drops[_tokenId].ownerOf, _salePrice * drops[_tokenId].royaltyPercent / 100);
     }
+
+    event CharitySentToEns(address from, string to, uint256 value);
+    event CharitySent(address from, address to, uint256 value);
 } 
