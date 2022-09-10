@@ -1,5 +1,5 @@
- // SPDX-License-Identifier: MIT
-pragma solidity 0.8.12;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.17;
 
 
 import "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
@@ -22,7 +22,6 @@ struct DropDatas {
     address artRef;
     address nameRef;
     address charity;
-    bool isEns;
 }
 
 contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
@@ -55,36 +54,6 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
         _mint(msg.sender, tokenId, amount, '');
     }
 
-    function createNewDrop(string memory name, string memory art, uint256 mintPrice,
-        uint16 maxPerWallet, uint16 maxSupply, address charity, uint16 charityPercent, uint16 royaltyPercent) external payable nonReentrant {
-        require(!v3RequirementEnabled || IERC721(v3phunks).balanceOf(msg.sender) > 0, "need 1 v3 phunk");
-        require(ICharityProvider(charityProvider).isCharity(charity), "not considered a charity");
-        require(msg.value >= .1 ether, "not senidng enough");
-        require(charityProvider != address(0), "charity provider is not set");
-        require(charityPercent > 29 && charityPercent < 101, "charity percent is in basis points of 100. we require 30-100% given to charity");
-        require(royaltyPercent <= 10, "Artist royalties percent is in basis points of 100 and must be <= 10%");
-
-
-        (bool success, ) = payable(charity).call{value: msg.value}('');
-        require(success, "unable to send value");        
-
-        drops[counter] = DropDatas(
-            maxPerWallet,
-            maxSupply,
-            royaltyPercent,
-            charityPercent,
-            mintPrice,
-            msg.sender,
-            SSTORE2.write(bytes(art)),
-            SSTORE2.write(bytes(name)),
-            charity,
-            false
-        );
-        emit CharitySent(drops[counter].ownerOf, charity, msg.value);
-
-        counter += 1;
-    }
-
     function createNewDropEnsCharity(string memory name, string memory art, uint256 mintPrice,
         uint16 maxPerWallet, uint16 maxSupply, string calldata charity, uint16 charityPercent, uint16 royaltyPercent) external payable nonReentrant {
         require(!v3RequirementEnabled || IERC721(v3phunks).balanceOf(msg.sender) > 0, "need 1 v3 phunk");
@@ -106,8 +75,7 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
             msg.sender,
             SSTORE2.write(bytes(art)),
             SSTORE2.write(bytes(name)),
-            SSTORE2.write(bytes(charity)),
-            true
+            SSTORE2.write(bytes(charity))
         );
         emit CharitySentToEns(drops[counter].ownerOf, charity, msg.value);
 
@@ -142,7 +110,6 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
 
     function withdrawAllFromDropEnsForCharity(uint256 idx) external {
         require(ethRaisedPerEdition[idx] > ethWithdrawn[idx], "balance is 0");
-        require(drops[idx].isEns, "this is an ENS donation");
         require(ICharityProvider(charityProvider).isCharity(drops[idx].charity));
         uint256 withdrawable = ethRaisedPerEdition[idx] - ethWithdrawn[idx];
         uint256 charitable = withdrawable * drops[idx].charityPercent / 100;
@@ -155,24 +122,6 @@ contract OpenEdition is Ownable, ERC1155Supply, ReentrancyGuard {
         (bool succ2, ) =payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
         require(succ && succ2, "something didnt work hmmmm");
         emit CharitySentToEns(drops[idx].ownerOf, ens, charitable);
-    }
-
-    function withdrawAllFromDropNoEns(uint256 idx) external {
-        require(ethRaisedPerEdition[idx] > ethWithdrawn[idx], "balance is 0");
-        require(!drops[idx].isEns, "this is not an ENS donation");
-        require(ICharityProvider(charityProvider).isCharity(drops[idx].charity));
-        uint256 withdrawable = ethRaisedPerEdition[idx] - ethWithdrawn[idx];
-        uint256 charitable = withdrawable * drops[idx].charityPercent / 100;
-
-        ethWithdrawn[idx] += withdrawable;
-        ethGivenToCharity[idx] += charitable;
-        charityToEthReceived[drops[idx].charity] += charitable;
-
-        (bool succ, ) = payable(drops[idx].charity).call{value: charitable}('');
-        (bool succ2, ) =payable(drops[idx].ownerOf).call{value: withdrawable - charitable}('');
-        require(succ && succ2, "something didnt work hmmmm");
-        emit CharitySent(drops[idx].ownerOf, drops[idx].charity, charitable);
-
     }
 
     //drop owner functions ("super owner" can execute any of this)
